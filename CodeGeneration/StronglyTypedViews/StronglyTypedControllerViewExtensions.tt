@@ -1,0 +1,139 @@
+﻿<#@ template debug="true" hostspecific="true" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ include file="StronglyTypedControllerViewExtensions.Types.cs" #>
+<#@ output extension=".cs" #>
+<#
+
+	DirectoryInfo t4Directory  = new DirectoryInfo( this.Host.ResolvePath( @"." ) );          // "C:\git\yourProject\Generated"
+	DirectoryInfo viewsRootDir = new DirectoryInfo( this.Host.ResolvePath( @"..\Views" ) );   // "C:\git\yourProject\Views"
+	DirectoryInfo wwwrootDir   = new DirectoryInfo( this.Host.ResolvePath( @"..\wwwroot" ) ); // "C:\git\yourProject\wwwroot"
+
+	List<ViewInfo>    views        = GetViews( viewsRootDir ).ToList();
+	List<ContentFile> contentFiles = GetWwwrootContentFiles( wwwrootDir ).ToList();
+
+#>using System;
+using System.Collections.Generic;
+using System.Linq.Expressions;
+using System.Threading.Tasks;
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
+
+using Microsoft.Extensions.DependencyInjection;
+
+#region Common.cs
+
+<#@ include file="Common.cs" #>
+
+#endregion
+
+namespace YourProject
+{
+	public static partial class ViewNames
+	{
+<#	foreach( ViewInfo v in views.Where( t => !t.IsPartial ) ) { #>
+		public const String <#= v.CSName #>¦ = @"<#= v.AspNetRelativePath #>";
+<#	} #>
+	}
+
+	public static partial class PartialViewNames
+	{
+<#	foreach( ViewInfo v in views.Where( t => t.IsPartial ) ) { #>
+		public const String <#= v.CSName #>¦ = @"<#= v.AspNetRelativePath #>";
+<#	} #>
+	}
+
+<# /*
+	public enum ContentFiles
+	{
+\<#	foreach( ContentFile contentFile in contentFiles.OrderBy( f => f.CSName ) ) { \#>
+		\<#= contentFile.CSName \#>,
+\<#	} \#>
+	}
+*/ #>
+
+	/// <summary>All (virtual) paths are relative to <c>wwwroot</c> (i.e. <see cref="Microsoft.AspNetCore.Hosting.IWebHostEnvironment.WebRootPath"/>).</summary>
+	public static partial class ContentFiles
+	{
+<#	foreach( ContentFile contentFile in contentFiles.OrderBy( f => f.CSName ) ) { #>
+		public const String <#= contentFile.CSName #>¦ = @"<#= contentFile.VirtualPath #>";
+<#	} #>
+	}
+
+	/// <summary>Does not include partial views.</summary>
+	public readonly partial struct StronglyTypedViews
+	{
+<#	foreach( ViewInfo v in views.Where( t => !t.IsPartial && t.ModelTypeName != null ) ) { #>
+		/// <summary><#= v.ProjectRelativePath #></summary>
+		public ViewResult <#= v.CSName #>( <#= v.ModelTypeName #> viewModel )
+		{
+			return this.controller.View( viewName: ViewNames.<#= v.CSName #>, model: viewModel ?? throw new ArgumentNullException(nameof(viewModel)) );
+		}
+
+<#	} #>
+<#	foreach( ViewInfo v in views.Where( t => !t.IsPartial && t.ModelTypeName is null ) ) { #>
+		/// <summary><#= v.ProjectRelativePath #></summary>
+		public ViewResult <#= v.CSName #>()
+		{
+			return this.controller.View( viewName: ViewNames.<#= v.CSName #>, model: null );
+		}
+
+<#	} #>
+	}
+
+	public readonly partial struct StronglyTypedPartialViews
+	{
+<#	foreach( ViewInfo v in views.Where( t => t.IsPartial && t.ModelTypeName is null ) ) { #>
+		/// <summary><#= v.ProjectRelativePath #></summary>
+		public async Task <#= v.CSName #>()
+		{
+			await this.htmlHelper.RenderPartialAsync( partialViewName: PartialViewNames.<#= v.CSName #>, model: null, viewData: this.htmlHelper.ViewData ).ConfigureAwait(false);
+		}
+
+<#	} #>
+	}
+
+	public readonly partial struct StronglyTypedPartialViews<TModel>
+	{
+<#	foreach( ViewInfo v in views.Where( t => t.IsPartial && t.ModelTypeName != null ) ) { #>
+		/// <summary><c><#= v.ProjectRelativePath #></c></summary>
+		public async Task <#= v.CSName #>( <#= v.ModelTypeName #> viewModel<#=v.MethodParamsForViewData #> )
+		{
+			ViewDataDictionary<<#= v.ModelTypeName #>> childVdd = this.CreateViewDataDictionaryForViewModel( viewModel );
+
+			await this.RenderPartialOuterAsync( name: PartialViewNames.<#= v.CSName #>, childVdd<#= v.MethodArgsForRender #> ).ConfigureAwait(false);
+		}
+
+		/// <summary><c><#= v.ProjectRelativePath #></c></summary>
+		public async Task <#= v.CSName #>_For( Expression<Func<TModel,<#= v.ModelTypeName #>>> expr<#=v.MethodParamsForViewData #> )
+		{
+			ViewDataDictionary<<#= v.ModelTypeName #>> childVdd = this.CreateViewDataDictionaryForModelExpression( forExpr: expr );
+
+			await this.RenderPartialOuterAsync( name: PartialViewNames.<#= v.CSName #>, childVdd<#= v.MethodArgsForRender #> ).ConfigureAwait(false);
+		}
+
+<#	} #>
+
+		// Need to repeat these as structs still don't have inheritance or mixins, argh.
+<#	foreach( ViewInfo v in views.Where( t => t.IsPartial && t.ModelTypeName is null ) ) { #>
+		/// <summary><#= v.ProjectRelativePath #></summary>
+		public async Task <#= v.CSName #>()
+		{
+			await this.htmlHelper.RenderPartialAsync( partialViewName: PartialViewNames.<#= v.CSName #>, model: null, viewData: this.htmlHelper.ViewData ).ConfigureAwait(false);
+		}
+
+<#	} #>
+	}
+}
+<#
+	this.GenerationEnvironment.AlignLines();
+#><#+
+
+#>
